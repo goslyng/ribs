@@ -1,0 +1,158 @@
+
+
+function angls_bucket_pump = transformBH(m,params,fitted,ribs)
+
+% debugText='hi';
+
+if ~(exist('fitted','var'))
+    fitted=1;
+end
+
+inh=0;
+runFittingSettings;
+
+pathSettings;
+addpath([codePath '//mvonSiebenthal/mri_toolbox_v1.5/']) 
+
+writeRib=0;
+displayImages=1;
+
+
+%%
+
+
+
+if (m >= 60 )
+    
+    imExh_ = load([dataPath num2str(m)  '/masterframes/exhMaster.mat']);
+    imExh_.stack.par.thickness =2.5;
+
+else
+    
+    imExh_ = load([dataPath num2str(m)  '/masterframes/exhMaster7_unmasked_uncropped.mat']);
+    
+end
+
+
+if fitted
+
+  tag = 'RibFittedRight';
+  else
+    
+    if m>=60
+        tag = 'RibRightExhNew';
+    else
+        tag = 'RibRightNew';
+
+    end
+    
+end
+
+subjectDataPath = [dataPath num2str(m) '/'];
+
+ribDir =[subjectDataPath 'ribs/' ];
+
+for i= 1:12
+    try
+        
+        tag = 'RibRightExhNew';
+
+
+        ribiPath = [ribDir tag num2str(i)];
+        ribsExh{i} = readVTKPolyDataPoints(ribiPath);
+        
+        
+        tag = 'RibRightInhNew';
+
+        ribiPath = [ribDir tag num2str(i)];
+        ribsInh{i} = readVTKPolyDataPoints(ribiPath);
+        
+        
+    catch
+        m
+        i
+    end
+end
+  
+
+%%
+for r=ribs
+ outputFile=[ params.registrationPath 'results/output' num2str(m) '_' num2str(r) '_0.txt'];
+
+fid = fopen(outputFile);
+failure=0;
+try
+    tline = fgets(fid);
+catch
+    tline=[];
+    failure=1;
+end
+
+flag=-1;
+
+while ischar(tline)
+
+    pointerX = (strfind(tline , 'angle X      = '));
+
+    if (~isempty(pointerX))
+
+        aX = str2double(tline(pointerX+16:end));
+        tline = fgets(fid);
+        pointerY = (strfind(tline , 'angle Y      = '));
+        aY = str2double(tline(pointerY+16:end));
+        tline = fgets(fid);
+
+        pointerZ = (strfind(tline , 'angle Z      = '));
+        aZ = str2double(tline(pointerZ+16:end));
+
+
+        tline = fgets(fid);
+        pointerX = (strfind(tline , 'Translation X = '));
+        tX = str2double(tline(pointerX+16:end));
+        tline = fgets(fid);
+        pointerY = (strfind(tline , 'Translation Y = '));
+        tY = str2double(tline(pointerY+16:end));
+        tline = fgets(fid);
+
+        pointerZ = (strfind(tline , 'Translation Z = '));
+        tZ = str2double(tline(pointerZ+16:end));                
+
+
+        angles(:,r)= [[aX; aY; aZ] ];%[aX; aY; aZ]];
+        trans(:,r)= [ tX; tY; tZ];
+
+    end  
+    tline = fgets(fid);
+
+end
+
+if ~failure
+fclose(fid);
+end
+
+end
+%%
+ angles(3,:)=  -angles(3,:);
+for r=ribs
+
+    firstPointRep =repmat(ribsExh{r}(:,1) ,1,100);%
+    ribPoints = ribsExh{r} -  firstPointRep ;
+%     angles = [angles(1) angles(2) -angles(3)]
+    R = findEulerO( angles(:,r),params.o,0);
+    ribsExh_rotated = R * ribPoints + firstPointRep + repmat(trans(:,r),1,100) ;%
+    [err_ribs1(r),~,tmp1,lenError(r),outOfPlaneError1{r}]= computeErorr({ribsExh_rotated},ribsInh(r),1,settings,1,1,1);
+
+    rot_mat = findRotaionMatrixNew(ribsExh{r});
+    angls_bucket_pump(r,:)=findEulerO(rot_mat'*R*rot_mat,[1 3  2 ],1);
+if writeRib
+    writeVTKPolyDataPoints([dataPath num2str(m)  '/rib' num2str(r) '_BH' ] ,ribsExh_rotated);
+end
+if displayImages
+    figure;plot33(ribsExh_rotated,'b.',[1 3 2]);
+    hold on;
+    plot33(ribsInh{r},'r.',[1 3 2 ]);
+    plot33(ribsExh{r},'g.',[1 3 2 ]);
+    axis equal
+end
+
+end

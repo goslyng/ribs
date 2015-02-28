@@ -1,0 +1,26 @@
+
+function saveRegistrationForRotationScriptsBH(s,params)
+
+
+    dataPathUnix = params.dataPathUnix;
+
+    cycleRegPath=[params.registrationPath '/scripts/reg_script' num2str(s) '_'  ];
+
+    for r = params.ribs
+
+        ExhRibPath = [dataPathUnix num2str(s) '/ribs/RibRight' params.stateMiddleFix 'New' num2str(r)];
+        pExh = readVTKPolyDataPoints(ExhRibPath);
+                          
+    
+        c = pExh(:,1);
+        params.movingImagePrefix = [params.subjectPath '/masterframes/inhMaster'];
+
+            writeScriptFile(s,0,r,0,c,...
+                [0 0 0],[0 0 0],params);
+        
+    end
+    writeRegistrationRotationSungridBH(params.ribs,cycleRegPath,[cycleRegPath 'sg.sh'])
+%      system(['qsub ' cycleRegPath 'sg.sh'])
+     sprintf(1, ['qsub ' cycleRegPath 'sg.sh\n']);
+
+end

@@ -1,0 +1,134 @@
+
+runFittingSettings;
+pathSettings;
+ribNumbers=settings.ribNumber;
+patch_size=settings.patch_size;
+
+writeImages=1;
+%% Load Images
+
+for s = mriSubjects
+    tmp=load( [mriDataPath num2str(s)],'im');
+    im{s}=tmp.im;
+    im_normalized = uint8((im{s}- min (im{s}(:)))/(max(im{s}(:)) - min (im{s}(:)))*255);
+    
+    if writeImages
+        for i=1:size(im_normalized,3)
+            imwrite(floor(im_normalized(:,:,i)),sprintf('N:\\rfData\\ims\\im_s%d_%03d.png',s,i));
+        end
+    end
+end
+%%
+settings.patch_size=[15 15 0];
+patch_size=settings.patch_size;
+
+x_hw = settings.patch_size(1);
+y_hw = settings.patch_size(2);
+z_hw = settings.patch_size(3);
+coords_all='';
+rule=1;
+%% Load VTK files of new database
+
+for s = mriSubjects 
+    
+
+    display(['Subject : ' num2str(s)]);
+
+    for i = 1%:length(sides)
+        side = sides{i};
+        subjectDataPath{s}=[ dataPath num2str(s) '/ribs/'];
+        for r=settings.ribNumber
+            groundTruthRibsPath = [subjectDataPath{s} 'Rib' side 'New' num2str(r)];
+            newPtsRibs{s,r,i}=readVTKPolyDataPoints(groundTruthRibsPath);
+
+        end
+    end
+
+
+end
+
+%% Sort points based on z, and build a classifier only based on the first points
+
+for s= mriSubjects 
+    
+    
+% 	for i=1:length(settings.rules)
+    for i = 1%:length(sides)
+
+    	selectedPoints{rule}{s} = [];
+        for r=ribNumbers
+           
+            tmpPoints = transCoord(newPtsRibs{s,r,i},settings.ap,settings.is,settings.lr);
+            selectedPoints{rule}{s} = [selectedPoints{rule}{s} newPtsRibs{s,r,i}(:,selectPointsR(tmpPoints,settings.rules{rule},sides{i},settings))];
+        end
+    end
+
+%     end
+end
+
+%%
+coords_all=''
+for s = mriSubjects 
+    clear pts;
+    clear ptsn;
+   % im_normalized = uint8((im{s}- min (im{s}(:)))/(max(im{s}(:)) - min (im{s}(:)))*255);
+    ribPts =  selectedPoints{rule}{s};
+%     for i=1:length( ribPts )
+%         pts{i} = ribPts{i};
+%         ptsn{i} = sampleNonRibs2D(im{s},pts{i},patch_size);
+        pts = ribPts;
+        ptsn = sampleNonRibs2D(im{s},ribPts,patch_size);
+
+%         pts{i} = round(pts{i});
+
+        validPts = pts(1,:) -x_hw  >= 1 & pts(1,:) + x_hw < size(im{s},2) ...
+        & pts(2,:) -y_hw  >= 1 & pts(2,:) + y_hw < size(im{s},1) ...
+        & pts(3,:)        >= 1 & pts(3,:) 	   < size(im{s},3) ;
+        pts = pts(:,validPts);
+%     end
+
+  %  pts_ = cell2mat(pts);
+ %   ptsn_= cell2mat(ptsn);  
+    pts_ = uint8(floor(pts));
+    ptsn_ = uint8(floor(ptsn));
+figure;plot33(ribPts)
+    dataPath_ = sprintf('/usr/biwinas01/scratch-g/sameig/rfData/ims/im_s%d_',s);
+    pos = 1;
+    for i=1:size(im_normalized,3)
+        figure(100);
+        imshow(floor(im_normalized(:,:,i)));
+        hold on;
+        inds = find(pts_(3,:)==i);
+        coords=sprintf('%s%03d.png %d %d %d %d %d %d',dataPath_,i,0,0,size(im_normalized,2),size(im_normalized,1),pos,length(inds));
+
+        for j=1:length(inds)
+                    rectangle('Position',[pts_(1,inds(j))-15,pts_(2,inds(j))-15,30,30])
+
+            coords = sprintf('%s %d %d',coords, pts_(1,inds(j)), pts_(2,inds(j)));
+        end
+        input(num2str(pos));
+        if ~isempty(inds)
+            coords_all = sprintf('%s%s\n',coords_all,coords);
+        end
+    end
+    pos = 0;
+    for i=1:size(im_normalized,3)
+
+        inds = find(ptsn_(3,:)==i);
+        coords=sprintf('%s%03d.png %d %d %d %d %d %d',dataPath_,i,0,0,size(im_normalized,2),size(im_normalized,1),pos,length(inds));
+
+        for j=1:length(inds)
+            coords = sprintf('%s %d %d',coords, ptsn_(1,inds(j)), ptsn_(2,inds(j)));
+        end
+        if ~isempty(inds)
+            coords_all = sprintf('%s%s\n',coords_all,coords);
+        end
+    end
+end
+%%
+fid = fopen('N:\rfData\index_random_subset_ribs.txt','w');
+fprintf(fid,coords_all);
+fclose(fid);
+
+snapnow;
+
